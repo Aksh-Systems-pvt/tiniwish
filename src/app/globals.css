@@ -1,0 +1,163 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-serif: var(--font-playfair), Georgia, serif;
+  --font-heading: var(--font-playfair), Georgia, serif;
+
+  /* ==========================================================================
+     TiniWish Luxury Design System Palette
+     "Little wishes. Timeless treasures."
+     ========================================================================== */
+  --color-primary-bg: #F7F3ED;
+  --color-secondary-bg: #EFE7DC;
+  --color-champagne: #D9C7AD;
+  --color-champagne-light: #F4EDE2;
+  --color-muted-gold: #AE8958;
+  --color-gold-hover: #967447;
+  --color-dark-brown: #514238;
+  --color-charcoal: #292522;
+  --color-white: #FFFFFF;
+
+  /* Aliases for backwards compatibility with existing codebase */
+  --color-ivory: #F7F3ED;
+  --color-ivory-soft: #FAF7F2;
+  --color-warm-beige: #EFE7DC;
+  --color-gold-dark: #AE8958;
+  --color-gold-deep: #514238;
+  --color-stone: #514238;
+  --color-stone-light: #7E7065;
+
+  /* Semantic UI mappings */
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* Refined, minimal luxury border radii (avoiding excessive bubbly rounding) */
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  /* Subtle, warm luxury shadows */
+  --shadow-subtle: 0 1px 2px 0 rgba(41, 37, 34, 0.04);
+  --shadow-card: 0 2px 8px -2px rgba(41, 37, 34, 0.05), 0 1px 4px -1px rgba(41, 37, 34, 0.03);
+  --shadow-hover: 0 8px 24px -4px rgba(41, 37, 34, 0.08), 0 2px 6px -2px rgba(41, 37, 34, 0.04);
+  --shadow-modal: 0 20px 48px -8px rgba(41, 37, 34, 0.16), 0 4px 12px -2px rgba(41, 37, 34, 0.06);
+}
+
+:root {
+  --background: #F7F3ED;
+  --foreground: #292522;
+  --card: #FFFFFF;
+  --card-foreground: #292522;
+  --popover: #FFFFFF;
+  --popover-foreground: #292522;
+  --primary: #292522;
+  --primary-foreground: #F7F3ED;
+  --secondary: #EFE7DC;
+  --secondary-foreground: #514238;
+  --muted: #EFE7DC;
+  --muted-foreground: #514238;
+  --accent: #D9C7AD;
+  --accent-foreground: #292522;
+  --destructive: #9C3333;
+  --border: #D9C7AD;
+  --input: #EFE7DC;
+  --ring: #AE8958;
+  --radius: 0.5rem;
+  --sidebar: #EFE7DC;
+  --sidebar-foreground: #292522;
+  --sidebar-primary: #AE8958;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #D9C7AD;
+  --sidebar-accent-foreground: #292522;
+  --sidebar-border: #D9C7AD;
+  --sidebar-ring: #AE8958;
+}
+
+.dark {
+  --background: #1C1917;
+  --foreground: #F7F3ED;
+  --card: #292522;
+  --card-foreground: #F7F3ED;
+  --popover: #292522;
+  --popover-foreground: #F7F3ED;
+  --primary: #AE8958;
+  --primary-foreground: #1C1917;
+  --secondary: #3B332D;
+  --secondary-foreground: #F7F3ED;
+  --muted: #3B332D;
+  --muted-foreground: #D9C7AD;
+  --accent: #514238;
+  --accent-foreground: #F7F3ED;
+  --destructive: #C75050;
+  --border: #514238;
+  --input: #3B332D;
+  --ring: #AE8958;
+  --sidebar: #1C1917;
+  --sidebar-foreground: #F7F3ED;
+  --sidebar-primary: #AE8958;
+  --sidebar-primary-foreground: #1C1917;
+  --sidebar-accent: #3B332D;
+  --sidebar-accent-foreground: #F7F3ED;
+  --sidebar-border: #514238;
+  --sidebar-ring: #AE8958;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6, .font-serif, .font-heading {
+  font-family: var(--font-serif);
+}
+
+.font-body {
+  font-family: var(--font-sans);
+}
+
+.font-btn {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  letter-spacing: 0.025em;
+}
