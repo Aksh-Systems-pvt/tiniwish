@@ -403,6 +403,7 @@ model WishlistItem {
 model Order {
   id                      String          @id @default(uuid())
   orderNumber             String          @unique // e.g. TW-2026-00001
+  idempotencyKey          String?         @unique
   userId                  String?
   user                    User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
   customerEmail           String
@@ -453,6 +454,7 @@ model Order {
   returnRequests          ReturnRequest[]
 
   @@index([orderNumber])
+  @@index([idempotencyKey])
   @@index([userId])
   @@index([status])
   @@index([createdAt])
