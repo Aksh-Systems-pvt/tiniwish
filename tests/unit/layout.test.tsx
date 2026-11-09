@@ -94,7 +94,7 @@ describe("TiniWish Global Website Layout Components", () => {
       const searchBtn = screen.getByLabelText("Search Collection");
       fireEvent.click(searchBtn);
 
-      expect(screen.getByPlaceholderText(/Search jewellery, bespoke gifts/i)).toBeDefined();
+      expect(screen.getByPlaceholderText(/Search by product name, SKU/i)).toBeDefined();
     });
   });
 

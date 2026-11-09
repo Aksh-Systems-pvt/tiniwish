@@ -11,6 +11,11 @@ import {
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 
+export interface ApiSuccessOptions {
+  message?: string;
+  status?: number;
+}
+
 /**
  * Creates a standard JSON success response conforming to:
  * {
@@ -21,16 +26,26 @@ import { logger } from "@/lib/logger";
  */
 export function apiSuccess<T>(
   data: T,
-  message: string = "Operation successful",
+  messageOrOptions: string | ApiSuccessOptions = "Operation successful",
   status: number = 200
 ): NextResponse<ApiSuccessResponse<T>> {
+  let message = "Operation successful";
+  let resolvedStatus = status;
+
+  if (typeof messageOrOptions === "object" && messageOrOptions !== null) {
+    if (messageOrOptions.message) message = messageOrOptions.message;
+    if (typeof messageOrOptions.status === "number") resolvedStatus = messageOrOptions.status;
+  } else if (typeof messageOrOptions === "string") {
+    message = messageOrOptions;
+  }
+
   return NextResponse.json(
     {
       success: true,
       message,
       data,
     },
-    { status }
+    { status: resolvedStatus }
   );
 }
 

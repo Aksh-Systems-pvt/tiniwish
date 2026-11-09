@@ -9,13 +9,14 @@ import { Badge } from "@/components/ui/badge"
 
 export interface ProductCardUIProps {
   id: string
-  title: string
+  title: React.ReactNode
   slug: string
   price: number | string
   compareAtPrice?: number | string | null
   primaryImage: string
   secondaryImage?: string | null
   categoryName?: string | null
+  altText?: string
   rating?: number
   reviewCount?: number
   isWishlisted?: boolean
@@ -38,6 +39,7 @@ export function ProductCardUI({
   primaryImage,
   secondaryImage,
   categoryName,
+  altText,
   rating,
   reviewCount,
   isWishlisted = false,
@@ -76,7 +78,7 @@ export function ProductCardUI({
         <Link href={`/products/${slug}`} className="block w-full h-full">
           <Image
             src={displayImage || "/images/placeholder.jpg"}
-            alt={title}
+            alt={altText || (typeof title === "string" ? title : "TiniWish luxury treasure")}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             className="object-cover object-center transition-transform duration-700 ease-out group-hover:scale-105"

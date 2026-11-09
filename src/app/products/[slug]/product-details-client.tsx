@@ -8,6 +8,7 @@ import { ProductImageGallery } from "@/components/products/product-image-gallery
 import { PincodeChecker } from "@/components/products/pincode-checker";
 import { ProductReviewsSection } from "@/components/products/product-reviews-section";
 import { RecentlyViewed } from "@/components/products/recently-viewed";
+import { ProductShareModal } from "@/components/products/product-share-modal";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import {
@@ -39,6 +40,7 @@ export function ProductDetailsClient({ product }: ProductDetailsClientProps) {
   );
   const [quantity, setQuantity] = useState<number>(1);
   const [activeTab, setActiveTab] = useState<"story" | "specs" | "shipping" | "care">("story");
+  const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
 
   const selectedVariant: ProductVariantDTO =
     product.variants.find((v) => v.id === selectedVariantId) ||
@@ -157,22 +159,8 @@ export function ProductDetailsClient({ product }: ProductDetailsClientProps) {
     });
   };
 
-  const handleShare = async () => {
-    const url = typeof window !== "undefined" ? window.location.href : "";
-    if (typeof navigator !== "undefined" && navigator.share) {
-      try {
-        await navigator.share({
-          title: product.title,
-          text: `Discover ${product.title} on TiniWish`,
-          url,
-        });
-      } catch {
-        // User cancelled share
-      }
-    } else if (typeof navigator !== "undefined" && navigator.clipboard) {
-      await navigator.clipboard.writeText(url);
-      toast.success("Link Copied", "Direct product link copied to clipboard.");
-    }
+  const handleShare = () => {
+    setIsShareModalOpen(true);
   };
 
   return (
@@ -565,6 +553,20 @@ export function ProductDetailsClient({ product }: ProductDetailsClientProps) {
 
       {/* Client-Side Recently Viewed Products */}
       <RecentlyViewed currentProduct={product} />
+
+      {/* Luxury Product Share Modal */}
+      <ProductShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        product={{
+          id: product.id,
+          title: product.title,
+          slug: product.slug,
+          price: Number(price),
+          image: primaryImage,
+          categoryName: product.categoryName,
+        }}
+      />
     </div>
   );
 }

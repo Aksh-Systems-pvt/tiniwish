@@ -1,5 +1,6 @@
 import { productRepository } from "@/repositories/product.repository";
 import { categoryRepository } from "@/repositories/category.repository";
+import { recommendationService } from "@/services/recommendation.service";
 import { ProductDTO, ProductFilterParams, CategoryDTO } from "@/types/product";
 import { NotFoundError } from "@/lib/errors";
 import { parsePaginationParams, buildPaginationMeta } from "@/lib/pagination";
@@ -94,16 +95,20 @@ export class ProductService {
   }
 
   /**
-   * Retrieves related products within the same category.
+   * Retrieves related and similar product recommendations based on category, attributes, and price tier.
    */
   async getRelatedProducts(productId: string, categorySlug?: string, limit: number = 4): Promise<ProductDTO[]> {
-    const { items } = await productRepository.findMany({
-      categorySlug,
-      page: 1,
-      limit: 10,
-    });
+    try {
+      return await recommendationService.getSimilarProducts(productId, limit);
+    } catch {
+      const { items } = await productRepository.findMany({
+        categorySlug,
+        page: 1,
+        limit: 10,
+      });
 
-    return items.filter((p) => p.id !== productId).slice(0, limit);
+      return items.filter((p) => p.id !== productId).slice(0, limit);
+    }
   }
 
   /**
