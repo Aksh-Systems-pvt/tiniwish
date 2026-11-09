@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -18,6 +18,15 @@ import { useStore } from "@/context/store-context";
 import { NavDropdown, NavDropdownProps } from "./nav-dropdown";
 import { SearchModal } from "./search-modal";
 import { CartDrawer } from "@/components/cart/cart-drawer";
+
+const emptySubscribe = () => () => {};
+function useIsHydratedClient() {
+  return useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
+}
 
 const JEWELLERY_DROPDOWN: Omit<NavDropdownProps, "label" | "href"> = {
   sections: [
@@ -110,6 +119,7 @@ export function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [expandedMobileCategory, setExpandedMobileCategory] = useState<string | null>(null);
+  const isMounted = useIsHydratedClient();
 
   const { cartCount, wishlistCount, isHydrated, openCartDrawer } = useStore();
 
@@ -374,15 +384,14 @@ export function Header() {
                       <Link
                         href="/wishlist"
                         onClick={() => setIsMobileMenuOpen(false)}
-                        suppressHydrationWarning
                         className="flex items-center justify-between py-2 px-2 text-xs font-medium text-dark-brown/80 hover:text-charcoal"
                       >
                         <span className="flex items-center gap-3">
                           <Heart className="w-4 h-4 text-muted-gold" />
                           <span>My Wishlist</span>
                         </span>
-                        {isHydrated && wishlistCount > 0 && (
-                          <span suppressHydrationWarning className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted-gold text-white">
+                        {isMounted && isHydrated && wishlistCount > 0 && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted-gold text-white">
                             {wishlistCount}
                           </span>
                         )}
@@ -486,13 +495,12 @@ export function Header() {
               {/* Wishlist Link with Live Badge */}
               <Link
                 href="/wishlist"
-                suppressHydrationWarning
-                aria-label={isHydrated && wishlistCount > 0 ? `Wishlist, ${wishlistCount} items` : "Wishlist"}
+                aria-label="Wishlist"
                 className="relative inline-flex items-center justify-center h-10 w-10 sm:h-11 sm:w-11 rounded-lg text-charcoal hover:text-muted-gold hover:bg-secondary-bg/70 transition-colors"
               >
                 <Heart className="h-5 w-5" />
-                {isHydrated && wishlistCount > 0 && (
-                  <span suppressHydrationWarning className="absolute top-1.5 right-1.5 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-muted-gold text-[9px] font-bold text-white shadow-sm animate-in zoom-in-75 duration-150">
+                {isMounted && isHydrated && wishlistCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-muted-gold text-[9px] font-bold text-white shadow-sm animate-in zoom-in-75 duration-150">
                     {wishlistCount > 99 ? "99+" : wishlistCount}
                   </span>
                 )}
@@ -502,13 +510,12 @@ export function Header() {
               <button
                 type="button"
                 onClick={openCartDrawer}
-                suppressHydrationWarning
-                aria-label={isHydrated && cartCount > 0 ? `Shopping Bag, ${cartCount} items` : "Shopping Bag"}
+                aria-label="Shopping Bag"
                 className="relative inline-flex items-center justify-center h-10 w-10 sm:h-11 sm:w-11 rounded-lg text-charcoal hover:text-muted-gold hover:bg-secondary-bg/70 transition-colors cursor-pointer"
               >
                 <ShoppingBag className="h-5 w-5" />
-                {isHydrated && cartCount > 0 && (
-                  <span suppressHydrationWarning className="absolute top-1.5 right-1.5 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-charcoal text-[9px] font-bold text-primary-bg shadow-sm animate-in zoom-in-75 duration-150">
+                {isMounted && isHydrated && cartCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-charcoal text-[9px] font-bold text-primary-bg shadow-sm animate-in zoom-in-75 duration-150">
                     {cartCount > 99 ? "99+" : cartCount}
                   </span>
                 )}
