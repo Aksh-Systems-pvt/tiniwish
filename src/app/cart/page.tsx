@@ -22,38 +22,72 @@ import {
 } from "lucide-react";
 
 const FREE_SHIPPING_THRESHOLD = 999;
-const STANDARD_SHIPPING_FEE = 99;
 
 export default function CartPage() {
   const router = useRouter();
-  const { cart, updateQuantity, removeFromCart, cartTotal, cartCount } = useStore();
+  const {
+    cart,
+    updateQuantity,
+    removeFromCart,
+    clearCart,
+    cartTotal,
+    cartCount,
+    appliedCoupon,
+    discountAmount,
+    shippingFee,
+    isFreeShipping,
+    grandTotal,
+    applyCoupon,
+    removeCoupon,
+    isHydrated,
+  } = useStore();
 
   const [promoCode, setPromoCode] = useState("");
-  const [appliedPromo, setAppliedPromo] = useState<string | null>(null);
-  const [promoDiscount, setPromoDiscount] = useState(0);
+  const [promoLoading, setPromoLoading] = useState(false);
   const [promoError, setPromoError] = useState("");
 
-  const isFreeShipping = cartTotal >= FREE_SHIPPING_THRESHOLD;
-  const shippingFee = isFreeShipping ? 0 : STANDARD_SHIPPING_FEE;
-  const progressToFree = Math.min(100, Math.round((cartTotal / FREE_SHIPPING_THRESHOLD) * 100));
-  const remainingForFree = Math.max(0, FREE_SHIPPING_THRESHOLD - cartTotal);
+  const remainingForFree = Math.max(0, FREE_SHIPPING_THRESHOLD - (cartTotal - discountAmount));
+  const progressToFree = Math.min(
+    100,
+    Math.round(((cartTotal - discountAmount) / FREE_SHIPPING_THRESHOLD) * 100)
+  );
 
-  const handleApplyPromo = (e: React.FormEvent) => {
+  const handleApplyPromo = async (e: React.FormEvent) => {
     e.preventDefault();
     setPromoError("");
 
     if (!promoCode.trim()) return;
 
-    if (promoCode.trim().toUpperCase() === "TINIWISH10") {
-      setAppliedPromo("TINIWISH10");
-      setPromoDiscount(Math.round(cartTotal * 0.1));
+    setPromoLoading(true);
+    try {
+      await applyCoupon(promoCode.trim());
       setPromoCode("");
-    } else {
-      setPromoError("Invalid coupon code. Try TINIWISH10 for 10% off.");
+    } catch (err: unknown) {
+      setPromoError((err as Error)?.message || "Invalid coupon code");
+    } finally {
+      setPromoLoading(false);
     }
   };
 
-  const finalTotal = Math.max(0, cartTotal - promoDiscount + shippingFee);
+  const handleRemovePromo = async () => {
+    try {
+      await removeCoupon();
+    } catch {
+      // Ignored
+    }
+  };
+
+  // Prevent hydration layout shift / SSR mismatch
+  if (!isHydrated) {
+    return (
+      <div className="py-16 bg-primary-bg min-h-screen">
+        <div className="container mx-auto px-4 max-w-7xl animate-pulse space-y-6">
+          <div className="h-8 w-48 bg-champagne/40 rounded" />
+          <div className="h-64 bg-white rounded-xl border border-champagne/40" />
+        </div>
+      </div>
+    );
+  }
 
   if (cart.length === 0) {
     return (
@@ -72,7 +106,7 @@ export default function CartPage() {
   return (
     <div className="py-10 bg-primary-bg min-h-screen">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl space-y-8">
-        {/* Page Title */}
+        {/* Page Title & Clear Bag Action */}
         <div className="pb-4 border-b border-champagne/40 flex items-center justify-between">
           <div>
             <h1 className="font-serif text-2xl sm:text-4xl text-charcoal font-normal">
@@ -82,13 +116,22 @@ export default function CartPage() {
               {cartCount} {cartCount === 1 ? "treasure" : "treasures"} in your curated bag.
             </p>
           </div>
-          <Link
-            href="/products"
-            className="text-xs font-medium text-charcoal hover:text-muted-gold inline-flex items-center gap-1 transition-colors"
-          >
-            <span>Continue Shopping</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={clearCart}
+              className="text-xs font-medium text-dark-brown/60 hover:text-rose-600 transition-colors cursor-pointer"
+            >
+              Clear Bag
+            </button>
+            <Link
+              href="/products"
+              className="text-xs font-medium text-charcoal hover:text-muted-gold inline-flex items-center gap-1 transition-colors"
+            >
+              <span>Continue Shopping</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
         </div>
 
         {/* Free Shipping Progress Indicator */}
@@ -219,22 +262,33 @@ export default function CartPage() {
                     type="text"
                     value={promoCode}
                     onChange={(e) => setPromoCode(e.target.value)}
-                    placeholder="Try TINIWISH10"
+                    placeholder="e.g. WELCOME10"
+                    disabled={promoLoading || Boolean(appliedCoupon)}
                     className="text-xs uppercase bg-white border-champagne h-9"
                   />
                   <Button
                     type="submit"
                     variant="outline"
+                    disabled={promoLoading || Boolean(appliedCoupon)}
                     className="text-xs h-9 px-3 border-champagne text-charcoal hover:bg-secondary-bg cursor-pointer shrink-0"
                   >
-                    Apply
+                    {promoLoading ? "Applying..." : "Apply"}
                   </Button>
                 </div>
-                {appliedPromo && (
-                  <p className="text-xs text-emerald-800 flex items-center gap-1 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Coupon {appliedPromo} applied (-10%)</span>
-                  </p>
+                {appliedCoupon && (
+                  <div className="flex items-center justify-between p-2 rounded-md bg-emerald-50 border border-emerald-200">
+                    <p className="text-xs text-emerald-800 flex items-center gap-1.5 font-medium">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Coupon <strong>{appliedCoupon.code}</strong> applied</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleRemovePromo}
+                      className="text-[11px] text-rose-700 hover:underline cursor-pointer"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 )}
                 {promoError && (
                   <p className="text-xs text-rose-700">{promoError}</p>
@@ -250,12 +304,12 @@ export default function CartPage() {
                   </span>
                 </div>
 
-                {promoDiscount > 0 && (
+                {discountAmount > 0 && (
                   <div className="flex justify-between text-emerald-800 font-medium">
                     <span className="flex items-center gap-1">
-                      <Tag className="w-3 h-3" /> Promo Discount
+                      <Tag className="w-3 h-3" /> Coupon Discount
                     </span>
-                    <span>-₹{promoDiscount.toLocaleString("en-IN")}</span>
+                    <span>-₹{discountAmount.toLocaleString("en-IN")}</span>
                   </div>
                 )}
 
@@ -289,7 +343,7 @@ export default function CartPage() {
                   <span className="text-[10px] text-dark-brown/60">Inclusive of all Indian taxes (GST)</span>
                 </div>
                 <span className="font-sans text-xl font-bold text-charcoal">
-                  ₹{finalTotal.toLocaleString("en-IN")}
+                  ₹{grandTotal.toLocaleString("en-IN")}
                 </span>
               </div>
 

@@ -25,32 +25,37 @@ const ToastContext = React.createContext<ToastContextType | undefined>(undefined
 // Global singleton listener for calling toast outside React tree
 type ToastListener = (toast: Omit<ToastMessage, "id">) => void
 let globalListener: ToastListener | null = null
+const pendingToasts: Omit<ToastMessage, "id">[] = []
+
+function dispatchToast(msg: Omit<ToastMessage, "id">) {
+  setTimeout(() => {
+    if (globalListener) {
+      globalListener(msg)
+    } else {
+      pendingToasts.push(msg)
+    }
+  }, 0)
+}
 
 export const toast = {
   success: (title: string, description?: string) => {
-    setTimeout(() => {
-      globalListener?.({ title, description, type: "success" })
-    }, 0)
+    dispatchToast({ title, description, type: "success" })
   },
   error: (title: string, description?: string) => {
-    setTimeout(() => {
-      globalListener?.({ title, description, type: "error" })
-    }, 0)
+    dispatchToast({ title, description, type: "error" })
   },
   info: (title: string, description?: string) => {
-    setTimeout(() => {
-      globalListener?.({ title, description, type: "info" })
-    }, 0)
+    dispatchToast({ title, description, type: "info" })
   },
   cart: (title: string, description?: string) => {
-    setTimeout(() => {
-      globalListener?.({ title, description, type: "cart" })
-    }, 0)
+    dispatchToast({ title, description, type: "cart" })
   },
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = React.useState<ToastMessage[]>([])
+  const isMountedRef = React.useRef(false)
+  const timerIdsRef = React.useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
 
   const removeToast = React.useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id))
@@ -66,23 +71,44 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Schedule asynchronously on next tick to prevent any React render-phase update conflicts
-      setTimeout(() => {
+      const tickId = setTimeout(() => {
+        timerIdsRef.current.delete(tickId)
+        if (!isMountedRef.current) return
+
         setToasts((prev) => [...prev, toastWithId])
 
         if (toastWithId.duration && toastWithId.duration > 0) {
-          setTimeout(() => {
-            removeToast(id)
+          const autoDismissId = setTimeout(() => {
+            timerIdsRef.current.delete(autoDismissId)
+            if (isMountedRef.current) {
+              removeToast(id)
+            }
           }, toastWithId.duration)
+          timerIdsRef.current.add(autoDismissId)
         }
       }, 0)
+      timerIdsRef.current.add(tickId)
     },
     [removeToast]
   )
 
   React.useEffect(() => {
+    isMountedRef.current = true
     globalListener = addToast
+
+    // Flush any pending toasts that were dispatched before mounting
+    if (pendingToasts.length > 0) {
+      const queued = [...pendingToasts]
+      pendingToasts.length = 0
+      queued.forEach((item) => addToast(item))
+    }
+
+    const activeTimers = timerIdsRef.current
     return () => {
+      isMountedRef.current = false
       globalListener = null
+      activeTimers.forEach((tid) => clearTimeout(tid))
+      activeTimers.clear()
     }
   }, [addToast])
 

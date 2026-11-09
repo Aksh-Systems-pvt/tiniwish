@@ -4,13 +4,15 @@ import React from "react";
 import { ProductCardUI } from "@/components/ui/product-card";
 import { useStore } from "@/context/store-context";
 import { ProductDTO } from "@/types/product";
+import { SearchHighlight } from "@/components/search/search-highlight";
 
 interface ProductGridItemProps {
   product: ProductDTO;
+  searchQuery?: string;
   onQuickView?: (product: ProductDTO) => void;
 }
 
-export function ProductGridItem({ product, onQuickView }: ProductGridItemProps) {
+export function ProductGridItem({ product, searchQuery, onQuickView }: ProductGridItemProps) {
   const { isWishlisted, toggleWishlist, addToCart } = useStore();
 
   const primaryImage =
@@ -58,7 +60,14 @@ export function ProductGridItem({ product, onQuickView }: ProductGridItemProps) 
   return (
     <ProductCardUI
       id={product.id}
-      title={product.title}
+      altText={product.title}
+      title={
+        searchQuery ? (
+          <SearchHighlight text={product.title} query={searchQuery} />
+        ) : (
+          product.title
+        )
+      }
       slug={product.slug}
       price={price}
       compareAtPrice={compareAtPrice}

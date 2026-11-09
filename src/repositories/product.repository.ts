@@ -245,6 +245,93 @@ export class ProductRepository {
   }
 
   /**
+   * Finds a product by its unique ID.
+   */
+  async findById(id: string): Promise<ProductDTO | null> {
+    if (process.env.NODE_ENV === "test") {
+      return SEED_PRODUCTS.find((p) => p.id === id) ?? null;
+    }
+
+    try {
+      const product = await prisma.product.findUnique({
+        where: { id },
+        include: {
+          category: {
+            include: {
+              parent: true,
+            },
+          },
+          variants: { where: { isActive: true } },
+          images: { orderBy: { displayOrder: "asc" } },
+          reviews: { select: { rating: true } },
+        },
+      });
+
+      if (!product) {
+        return SEED_PRODUCTS.find((p) => p.id === id) ?? null;
+      }
+
+      const ratingSum = product.reviews.reduce((acc, r) => acc + r.rating, 0);
+      const rating = product.reviews.length > 0 ? Number((ratingSum / product.reviews.length).toFixed(1)) : 5.0;
+
+      const isChildCategory = product.category.parent !== null;
+      const categoryName = isChildCategory ? product.category.parent?.name || product.category.name : product.category.name;
+      const catSlug = isChildCategory ? product.category.parent?.slug || product.category.slug : product.category.slug;
+      const subcategoryName = isChildCategory ? product.category.name : null;
+      const subcategorySlugVal = isChildCategory ? product.category.slug : null;
+
+      return {
+        id: product.id,
+        categoryId: product.categoryId,
+        subcategoryId: isChildCategory ? product.categoryId : null,
+        categoryName,
+        categorySlug: catSlug,
+        subcategoryName,
+        subcategorySlug: subcategorySlugVal,
+        title: product.title,
+        slug: product.slug,
+        description: product.description,
+        materials: product.materials,
+        careInstructions: product.careInstructions,
+        isFeatured: product.isFeatured,
+        isArchived: product.isArchived,
+        rating,
+        reviewCount: product.reviews.length,
+        createdAt: product.createdAt.toISOString(),
+        variants: product.variants.map((v) => ({
+          id: v.id,
+          productId: v.productId,
+          sku: v.sku,
+          title: v.title,
+          attributes: (v.attributes as Record<string, string>) || {},
+          mrp: Number(v.mrp),
+          sellingPrice: Number(v.sellingPrice),
+          costPrice: v.costPrice ? Number(v.costPrice) : null,
+          stockQuantity: 0,
+          lowStockThreshold: 5,
+          weightGrams: v.weightGrams,
+          lengthCm: v.lengthCm ? Number(v.lengthCm) : null,
+          widthCm: v.widthCm ? Number(v.widthCm) : null,
+          heightCm: v.heightCm ? Number(v.heightCm) : null,
+          isDefault: v.isDefault,
+          isActive: v.isActive,
+        })),
+        images: product.images.map((img) => ({
+          id: img.id,
+          productId: img.productId,
+          url: img.url,
+          altText: img.altText,
+          displayOrder: img.displayOrder,
+          isPrimary: img.isPrimary,
+        })),
+      };
+    } catch (error) {
+      logger.warn(`Database query failed for id '${id}'. Falling back to seed data.`, { error });
+      return SEED_PRODUCTS.find((p) => p.id === id) ?? null;
+    }
+  }
+
+  /**
    * In-memory search and filter fallback.
    */
   private filterInMemory(params: ProductFilterParams): { items: ProductDTO[]; totalCount: number } {

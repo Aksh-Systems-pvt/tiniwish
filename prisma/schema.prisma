@@ -138,6 +138,7 @@ model User {
   returnRequests ReturnRequest[]
   notifications  Notification[]
   auditLogs      AuditLog[]
+  searchLogs     SearchLog[]
 
   @@index([supabaseUid])
   @@index([email])
@@ -332,6 +333,7 @@ model Cart {
   userId       String?    @unique
   user         User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
   sessionToken String?    @unique
+  couponCode   String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -364,15 +366,17 @@ model CartItem {
 // ------------------------------------------------------------------------------
 
 model Wishlist {
-  id        String         @id @default(uuid())
-  userId    String         @unique
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  id           String         @id @default(uuid())
+  userId       String?        @unique
+  user         User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionToken String?        @unique
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
-  items     WishlistItem[]
+  items        WishlistItem[]
 
   @@index([userId])
+  @@index([sessionToken])
 }
 
 // ------------------------------------------------------------------------------
@@ -722,4 +726,27 @@ model SiteSetting {
   updatedAt   DateTime @updatedAt
 
   @@index([key])
+}
+
+// ------------------------------------------------------------------------------
+// 25. SEARCH ANALYTICS & REPORTING
+// ------------------------------------------------------------------------------
+
+model SearchLog {
+  id              String   @id @default(uuid())
+  query           String
+  normalizedQuery String
+  resultsCount    Int      @default(0)
+  hasResults      Boolean  @default(false)
+  filters         Json?
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+
+  @@index([normalizedQuery])
+  @@index([hasResults])
+  @@index([createdAt])
+  @@index([userId])
 }

@@ -1,62 +1,110 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { ProductDTO } from "@/types/product";
 import { ProductGridItem } from "@/components/products/product-grid-item";
-
-const RECENTLY_VIEWED_KEY = "tiniwish_recently_viewed_v1";
-const MAX_RECENT_ITEMS = 6;
+import { QuickViewModal } from "@/components/products/quick-view-modal";
+import {
+  trackRecentlyViewed,
+  getRecentlyViewed,
+  clearRecentlyViewed,
+} from "@/lib/recently-viewed";
+import { toast } from "@/components/ui/toast";
+import { Clock, Trash2 } from "lucide-react";
 
 interface RecentlyViewedProps {
-  currentProduct: ProductDTO;
+  currentProduct?: ProductDTO;
+  title?: string;
+  subtitle?: string;
+  maxItems?: number;
+  className?: string;
 }
 
-export function RecentlyViewed({ currentProduct }: RecentlyViewedProps) {
-  const [recentProducts, setRecentProducts] = useState<ProductDTO[]>([]);
+const emptySubscribe = () => () => {};
+
+export function RecentlyViewed({
+  currentProduct,
+  title = "Recently Viewed Pieces",
+  subtitle = "Your Curated Journey",
+  maxItems = 4,
+  className = "",
+}: RecentlyViewedProps) {
+  const [items, setItems] = useState<ProductDTO[]>([]);
+  const [quickViewProduct, setQuickViewProduct] = useState<ProductDTO | null>(null);
+
+  const isMounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(RECENTLY_VIEWED_KEY);
-      const list: ProductDTO[] = stored ? JSON.parse(stored) : [];
+    const timer = setTimeout(() => {
+      if (currentProduct) {
+        const updated = trackRecentlyViewed(currentProduct);
+        // Filter out the current product so we don't display it to itself
+        setItems(updated.filter((p) => p.id !== currentProduct.id).slice(0, maxItems));
+      } else {
+        const stored = getRecentlyViewed();
+        setItems(stored.slice(0, maxItems));
+      }
+    }, 0);
 
-      // Add current product to the front of history without duplicate
-      const updatedList = [
-        currentProduct,
-        ...list.filter((p) => p.id !== currentProduct.id),
-      ].slice(0, MAX_RECENT_ITEMS);
+    return () => clearTimeout(timer);
+  }, [currentProduct, maxItems]);
 
-      localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(updatedList));
+  const handleClear = () => {
+    clearRecentlyViewed();
+    setItems([]);
+    toast.info("Browsing History Cleared", "Your recently viewed items have been reset.");
+  };
 
-      // Asynchronously update recent list to comply with strict external state synchronization
-      queueMicrotask(() => {
-        const displayList = list.filter((p) => p.id !== currentProduct.id).slice(0, 4);
-        setRecentProducts(displayList);
-      });
-    } catch {
-      // Storage unavailable
-    }
-  }, [currentProduct]);
-
-  if (recentProducts.length === 0) {
+  if (!isMounted || items.length === 0) {
     return null;
   }
 
   return (
-    <section className="pt-16 border-t border-champagne/40">
-      <div className="mb-8">
-        <span className="text-xs uppercase tracking-widest text-muted-gold font-semibold block mb-1">
-          Your Curated Journey
-        </span>
-        <h2 className="font-serif text-2xl sm:text-3xl text-charcoal">
-          Recently Viewed Pieces
-        </h2>
+    <section className={`pt-14 pb-4 border-t border-champagne/40 ${className}`}>
+      {/* Section Header with Clear History Button */}
+      <div className="flex items-end justify-between mb-8">
+        <div>
+          <div className="inline-flex items-center gap-1.5 text-xs uppercase tracking-widest text-muted-gold font-semibold mb-1">
+            <Clock className="w-3.5 h-3.5" />
+            <span>{subtitle}</span>
+          </div>
+          <h2 className="font-serif text-2xl sm:text-3xl text-charcoal">
+            {title}
+          </h2>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleClear}
+          aria-label="Clear recently viewed history"
+          className="inline-flex items-center gap-1.5 text-xs text-dark-brown/60 hover:text-rose-600 transition-colors cursor-pointer py-1 px-2 rounded-md hover:bg-secondary-bg/60"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          <span>Clear History</span>
+        </button>
       </div>
 
+      {/* Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-        {recentProducts.map((p) => (
-          <ProductGridItem key={p.id} product={p} />
+        {items.map((p) => (
+          <ProductGridItem
+            key={p.id}
+            product={p}
+            onQuickView={(prod) => setQuickViewProduct(prod)}
+          />
         ))}
       </div>
+
+      {/* Quick View Modal */}
+      <QuickViewModal
+        product={quickViewProduct}
+        isOpen={Boolean(quickViewProduct)}
+        onClose={() => setQuickViewProduct(null)}
+      />
     </section>
   );
 }
