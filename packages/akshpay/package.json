@@ -1,0 +1,61 @@
+{
+  "name": "akshpay",
+  "version": "1.0.0",
+  "description": "Accept UPI payments in Node.js for free. Zero commission. Works with PhonePe Business & Paytm Business APIs. Includes UPI QR code generation, webhook verification, and payment status checks. TypeScript-first, production-ready.",
+  "author": "Khubesh Singh <khubeshsingh@gmail.com> (https://github.com/iamrobinsharaya)",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./phonepe": {
+      "types": "./dist/adapters/phonepe.d.ts",
+      "import": "./dist/adapters/phonepe.js",
+      "require": "./dist/adapters/phonepe.cjs"
+    },
+    "./paytm": {
+      "types": "./dist/adapters/paytm.d.ts",
+      "import": "./dist/adapters/paytm.js",
+      "require": "./dist/adapters/paytm.cjs"
+    },
+    "./qr": {
+      "types": "./dist/upi/qr.d.ts",
+      "import": "./dist/upi/qr.js",
+      "require": "./dist/upi/qr.cjs"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js",
+      "require": "./dist/utils/index.cjs"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\""
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.5",
+    "@types/node": "^24.19.2",
+    "tsup": "^8.4.0",
+    "typescript": "^5"
+  }
+}
+

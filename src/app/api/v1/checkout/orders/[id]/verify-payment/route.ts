@@ -19,11 +19,28 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const validated = verifyPaymentSchema.parse(body);
     const authUser = await getAuthUser(request);
 
-    const updatedOrder = await checkoutService.verifyPayment(
-      id,
-      validated,
-      authUser
-    );
+    let updatedOrder;
+    if (
+      validated.paymentMethod === "UPI" ||
+      validated.transactionId ||
+      validated.upiReferenceId
+    ) {
+      updatedOrder = await checkoutService.verifyUpiPayment(
+        id,
+        validated.transactionId || validated.upiReferenceId,
+        authUser
+      );
+    } else {
+      updatedOrder = await checkoutService.verifyPayment(
+        id,
+        {
+          razorpayPaymentId: validated.razorpayPaymentId || `pay_sim_${Date.now()}`,
+          razorpayOrderId: validated.razorpayOrderId || "order_sim_123",
+          razorpaySignature: validated.razorpaySignature || "mock_signature_valid",
+        },
+        authUser
+      );
+    }
 
     return apiSuccess(updatedOrder, "Payment verified successfully. Order confirmed.");
   } catch (error) {

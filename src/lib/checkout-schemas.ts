@@ -66,7 +66,7 @@ export const checkoutCalculationSchema = z.object({
     .trim()
     .regex(INDIAN_PINCODE_REGEX, "Please provide a valid 6-digit PIN code"),
   couponCode: z.string().trim().optional().nullable(),
-  paymentMethod: z.enum(["RAZORPAY", "COD"]).default("RAZORPAY"),
+  paymentMethod: z.enum(["RAZORPAY", "COD", "UPI"]).default("RAZORPAY"),
   isGiftWrapped: z.boolean().optional(),
   items: z
     .array(
@@ -87,7 +87,7 @@ export const createOrderSchema = z.object({
   customer: checkoutCustomerSchema,
   shippingAddress: checkoutAddressSchema,
   billingAddress: checkoutAddressSchema.optional(),
-  paymentMethod: z.enum(["RAZORPAY", "COD"]),
+  paymentMethod: z.enum(["RAZORPAY", "COD", "UPI"]),
   couponCode: z.string().trim().optional().nullable(),
   isGiftWrapped: z.boolean().optional(),
   giftOptions: z
@@ -111,8 +111,11 @@ export const createOrderSchema = z.object({
 });
 
 export const verifyPaymentSchema = z.object({
-  razorpayPaymentId: z.string().min(1, "Razorpay Payment ID is required"),
-  razorpayOrderId: z.string().min(1, "Razorpay Order ID is required"),
-  razorpaySignature: z.string().min(1, "Razorpay Signature is required"),
+  paymentMethod: z.enum(["RAZORPAY", "UPI"]).optional(),
+  razorpayPaymentId: z.string().optional(),
+  razorpayOrderId: z.string().optional(),
+  razorpaySignature: z.string().optional(),
+  transactionId: z.string().optional(),
+  upiReferenceId: z.string().optional(),
 });
 

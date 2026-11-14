@@ -70,7 +70,7 @@ export default function CheckoutPage() {
   const [guestErrors, setGuestErrors] = useState<Record<string, string>>({});
 
   // Checkout Options
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>("RAZORPAY");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>("UPI");
   const [isGiftWrapped, setIsGiftWrapped] = useState(false);
   const [giftMessage, setGiftMessage] = useState("");
   const [appliedCouponCode, setAppliedCouponCode] = useState("");
@@ -96,24 +96,53 @@ export default function CheckoutPage() {
         const meRes = await fetch("/api/auth/me");
         if (meRes.ok) {
           const meData = await meRes.json();
-          if (meData?.data?.user) {
-            const u = meData.data.user;
+          const u = meData?.data?.user || (meData?.data?.id ? meData.data : null);
+          if (u) {
             setCurrentUser({
               id: u.id,
               email: u.email,
-              name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email.split("@")[0],
+              name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email?.split("@")[0] || "Patron",
             });
 
-            // Fetch saved addresses
-            const addrRes = await fetch("/api/v1/user/addresses");
-            if (addrRes.ok) {
-              const addrData = await addrRes.json();
-              if (Array.isArray(addrData.data) && addrData.data.length > 0) {
-                setSavedAddresses(addrData.data);
-                setSelectedAddress(addrData.data[0]);
-              } else {
-                setIsAddingNewAddress(true);
+            // Fetch saved addresses from address endpoint or profile
+            let loadedAddresses: CheckoutAddressDTO[] = [];
+            try {
+              const addrRes = await fetch("/api/v1/user/addresses");
+              if (addrRes.ok) {
+                const addrData = await addrRes.json();
+                if (Array.isArray(addrData.data) && addrData.data.length > 0) {
+                  loadedAddresses = addrData.data;
+                }
               }
+            } catch {
+              // Fallback to profile addresses if address endpoint fails
+            }
+
+            if (loadedAddresses.length === 0 && Array.isArray(u.addresses) && u.addresses.length > 0) {
+              loadedAddresses = u.addresses.map((a: any) => ({
+                id: a.id,
+                fullName: a.fullName || "",
+                phone: a.phone || "",
+                pincode: a.pincode || "",
+                state: a.state || "",
+                city: a.city || "",
+                addressLine1: a.addressLine1 || "",
+                addressLine2: a.addressLine2 || "",
+                landmark: a.landmark || "",
+                addressType: (a.addressType as any) || "HOME",
+                isDefaultShipping: Boolean(a.isDefaultShipping),
+                isDefaultBilling: Boolean(a.isDefaultBilling),
+              }));
+            }
+
+            if (loadedAddresses.length > 0) {
+              setSavedAddresses(loadedAddresses);
+              const defaultAddr =
+                loadedAddresses.find((a) => a.isDefaultShipping) || loadedAddresses[0];
+              setSelectedAddress(defaultAddr);
+              setIsAddingNewAddress(false);
+            } else {
+              setIsAddingNewAddress(true);
             }
           }
         }
@@ -185,10 +214,29 @@ export default function CheckoutPage() {
     setAppliedCouponCode("");
   };
 
-  const handleAddressSubmit = (address: CheckoutAddressDTO) => {
+  const handleAddressSubmit = async (address: CheckoutAddressDTO) => {
     setSelectedAddress(address);
     setIsAddingNewAddress(false);
     setStep("payment");
+
+    if (currentUser && address.saveToProfile && !address.id) {
+      try {
+        const res = await fetch("/api/v1/user/addresses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(address),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data) {
+            setSavedAddresses((prev) => [json.data, ...prev]);
+            setSelectedAddress(json.data);
+          }
+        }
+      } catch {
+        // Non-fatal if address persistence fails
+      }
+    }
   };
 
   const validateGuestDetails = (): boolean => {
@@ -275,11 +323,18 @@ export default function CheckoutPage() {
         return;
       }
 
+      // Handle UPI Payment (PhonePe / Paytm / GPay QR & App)
+      if (paymentMethod === "UPI") {
+        clearCart();
+        router.push(`/checkout/payment?orderNumber=${createdOrder.orderNumber}`);
+        return;
+      }
+
       // Handle Razorpay Online Payment
       if (paymentMethod === "RAZORPAY") {
         const razorpayKey = createdOrder.razorpayKeyId || "rzp_test_placeholderKeyId";
 
-        // Check if Razorpay JS SDK loaded
+        // Check if Razorpay JS SDK loaded with real production/test keys
         if (typeof window !== "undefined" && window.Razorpay && !razorpayKey.includes("placeholder")) {
           const options = {
             key: razorpayKey,
@@ -301,6 +356,7 @@ export default function CheckoutPage() {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
+                      paymentMethod: "RAZORPAY",
                       razorpayPaymentId: response.razorpay_payment_id,
                       razorpayOrderId: response.razorpay_order_id,
                       razorpaySignature: response.razorpay_signature,
@@ -330,27 +386,9 @@ export default function CheckoutPage() {
           rzp.open();
           setIsLoading(false);
         } else {
-          // Development sandbox / test fallback verification
-          const simRes = await fetch(
-            `/api/v1/checkout/orders/${createdOrder.id}/verify-payment`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                razorpayPaymentId: `pay_sim_${Date.now()}`,
-                razorpayOrderId: createdOrder.razorpayOrderId || "order_sim_123",
-                razorpaySignature: "mock_signature_valid",
-              }),
-            }
-          );
-
-          if (simRes.ok) {
-            clearCart();
-            toast.success("Payment Received", "Your order has been confirmed.");
-            router.push(`/checkout/success?orderNumber=${createdOrder.orderNumber}`);
-          } else {
-            throw new Error("Sandbox payment verification failed");
-          }
+          // Development sandbox with placeholder credentials: take user to payment page to review & authorize
+          clearCart();
+          router.push(`/checkout/payment?orderNumber=${createdOrder.orderNumber}`);
         }
       }
     } catch (err: unknown) {
@@ -633,10 +671,16 @@ export default function CheckoutPage() {
                       </button>
                     </div>
                     <p className="font-medium text-charcoal">
-                      {paymentMethod === "RAZORPAY" ? "Online Payment (Razorpay)" : "Cash on Delivery (COD)"}
+                      {paymentMethod === "UPI"
+                        ? "UPI & Dynamic QR (PhonePe, GPay, Paytm)"
+                        : paymentMethod === "RAZORPAY"
+                        ? "Online Payment (Razorpay)"
+                        : "Cash on Delivery (COD)"}
                     </p>
                     <p className="text-dark-brown/70 text-[11px]">
-                      {paymentMethod === "RAZORPAY"
+                      {paymentMethod === "UPI"
+                        ? "Pay via PhonePe, GPay, Paytm or scan QR"
+                        : paymentMethod === "RAZORPAY"
                         ? "UPI, Cards, RuPay, NetBanking"
                         : "Pay cash/UPI at doorstep upon delivery"}
                     </p>

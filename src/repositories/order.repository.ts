@@ -49,6 +49,20 @@ export interface CreateOrderParams {
     attributes?: Record<string, string>;
   }>;
   razorpayOrderId?: string | null;
+  provider?: string | null;
+  providerReferenceId?: string | null;
+  providerTransactionId?: string | null;
+  amountInPaise?: number;
+  redirectUrl?: string | null;
+  upiQrDataUrl?: string | null;
+  upiUri?: string | null;
+  intentLinks?: {
+    generic?: string;
+    phonepe?: string;
+    gpay?: string;
+    paytm?: string;
+    bhim?: string;
+  } | null;
 }
 
 interface PrismaOrderWithRelations {
@@ -126,133 +140,143 @@ export class OrderRepository {
     }
 
     try {
-      return await prisma.$transaction(async (tx) => {
-        // Idempotency check inside transaction
-        if (data.idempotencyKey) {
-          const existing = await tx.order.findUnique({
-            where: { idempotencyKey: data.idempotencyKey },
-            include: {
-              items: true,
-              payments: { orderBy: { createdAt: "desc" }, take: 1 },
-            },
-          });
-          if (existing) {
-            logger.info(`Idempotent order replay (DB): ${existing.orderNumber}`);
-            return this.mapPrismaOrderToDTO(existing);
-          }
-        }
-
-        // 1. Create Order record
-        const order = await tx.order.create({
-          data: {
-            orderNumber: data.orderNumber,
-            idempotencyKey: data.idempotencyKey,
-            userId: data.userId || null,
-            customerName: data.customerName,
-            customerEmail: data.customerEmail,
-            customerPhone: data.customerPhone,
-            status: data.status,
-            subtotal: data.subtotal,
-            discountAmount: data.discountAmount,
-            taxAmount: data.taxAmount,
-            cgstAmount: data.cgstAmount,
-            sgstAmount: data.sgstAmount,
-            igstAmount: data.igstAmount,
-            shippingFee: data.shippingFee,
-            codFee: data.codFee,
-            totalAmount: data.totalAmount,
-            paymentMethod: data.paymentMethod,
-            shippingAddressSnapshot: JSON.stringify(data.shippingAddress),
-            billingAddressSnapshot: JSON.stringify(data.billingAddress),
-            couponCode: data.couponCode || null,
-            isGiftWrapped: data.isGiftWrapped,
-            giftFee: data.giftFee,
-            notes: data.notes || null,
-          },
-        });
-
-        // 2. Create OrderItems & update Inventory
-        for (const item of data.items) {
-          await tx.orderItem.create({
-            data: {
-              orderId: order.id,
-              variantId: item.variantId || null,
-              productTitle: item.productTitle,
-              variantTitle: item.variantTitle,
-              sku: item.sku,
-              hsnCode: item.hsnCode || "7117",
-              unitPrice: item.unitPrice,
-              sellingPrice: item.sellingPrice,
-              quantity: item.quantity,
-              taxRatePercent: item.taxRatePercent,
-              taxAmount: item.taxAmount,
-              totalPrice: item.totalPrice,
-              imageUrlSnapshot: item.imageUrl || null,
-              variantAttributesSnapshot: item.attributes || {},
-            },
-          });
-
-          // If variantId is present, update inventory
-          if (item.variantId) {
-            try {
-              const inventory = await tx.inventory.findUnique({
-                where: { variantId: item.variantId },
-              });
-
-              if (inventory) {
-                await tx.inventory.update({
-                  where: { variantId: item.variantId },
-                  data: {
-                    quantityAvailable: { decrement: item.quantity },
-                    quantityReserved: { increment: item.quantity },
-                  },
-                });
-
-                await tx.inventoryMovement.create({
-                  data: {
-                    inventoryId: inventory.id,
-                    type: "ORDER_RESERVED",
-                    quantityChange: -item.quantity,
-                    balanceAfter: inventory.quantityAvailable - item.quantity,
-                    referenceId: order.id,
-                    reason: `Order ${order.orderNumber} placed`,
-                  },
-                });
-              }
-            } catch (invErr) {
-              logger.warn(`Could not update inventory for variant ${item.variantId}`, { invErr });
+      return await prisma.$transaction(
+        async (tx) => {
+          // Idempotency check inside transaction
+          if (data.idempotencyKey) {
+            const existing = await tx.order.findUnique({
+              where: { idempotencyKey: data.idempotencyKey },
+              include: {
+                items: true,
+                payments: { orderBy: { createdAt: "desc" }, take: 1 },
+              },
+            });
+            if (existing) {
+              logger.info(`Idempotent order replay (DB): ${existing.orderNumber}`);
+              return this.mapPrismaOrderToDTO(existing);
             }
           }
+
+          // 1. Create Order, OrderItems, and Payment atomically via nested Prisma create
+          const fullOrder = await tx.order.create({
+            data: {
+              orderNumber: data.orderNumber,
+              idempotencyKey: data.idempotencyKey,
+              userId: data.userId || null,
+              customerName: data.customerName,
+              customerEmail: data.customerEmail,
+              customerPhone: data.customerPhone,
+              status: data.status,
+              subtotal: data.subtotal,
+              discountAmount: data.discountAmount,
+              taxAmount: data.taxAmount,
+              cgstAmount: data.cgstAmount,
+              sgstAmount: data.sgstAmount,
+              igstAmount: data.igstAmount,
+              shippingFee: data.shippingFee,
+              codFee: data.codFee,
+              totalAmount: data.totalAmount,
+              paymentMethod: data.paymentMethod,
+              shippingAddressSnapshot: JSON.stringify(data.shippingAddress),
+              billingAddressSnapshot: JSON.stringify(data.billingAddress),
+              couponCode: data.couponCode || null,
+              isGiftWrapped: data.isGiftWrapped,
+              giftFee: data.giftFee,
+              notes: data.notes || null,
+              items: {
+                create: data.items.map((item) => ({
+                  variantId: item.variantId || null,
+                  productTitle: item.productTitle,
+                  variantTitle: item.variantTitle,
+                  sku: item.sku,
+                  hsnCode: item.hsnCode || "7117",
+                  unitPrice: item.unitPrice,
+                  sellingPrice: item.sellingPrice,
+                  quantity: item.quantity,
+                  taxRatePercent: item.taxRatePercent,
+                  taxAmount: item.taxAmount,
+                  totalPrice: item.totalPrice,
+                  imageUrlSnapshot: item.imageUrl || null,
+                  variantAttributesSnapshot: item.attributes || {},
+                })),
+              },
+              payments: {
+                create: [
+                  {
+                    attemptNumber: 1,
+                    amount: data.totalAmount,
+                    amountInPaise: data.amountInPaise || Math.round(data.totalAmount * 100),
+                    currency: "INR",
+                    method: data.paymentMethod,
+                    status: data.paymentStatus,
+                    provider: data.provider || (data.paymentMethod === "UPI" ? "AKSHPAY_PHONEPE" : data.paymentMethod),
+                    providerReferenceId:
+                      data.providerReferenceId ||
+                      (data.paymentMethod === "UPI" ? data.orderNumber : data.razorpayOrderId) ||
+                      null,
+                    providerTransactionId: data.providerTransactionId || null,
+                    idempotencyKey: data.idempotencyKey ? `${data.idempotencyKey}_pay` : null,
+                    razorpayOrderId: data.razorpayOrderId || null,
+                    gatewayResponse: {
+                      upiQrDataUrl: data.upiQrDataUrl || null,
+                      upiUri: data.upiUri || null,
+                      intentLinks: data.intentLinks || null,
+                      redirectUrl: data.redirectUrl || null,
+                    },
+                  },
+                ],
+              },
+            },
+            include: {
+              items: true,
+              payments: true,
+            },
+          });
+
+          // 2. Decrement inventory for items with variantId
+          for (const item of data.items) {
+            if (item.variantId) {
+              try {
+                const inventory = await tx.inventory.findUnique({
+                  where: { variantId: item.variantId },
+                });
+
+                if (inventory) {
+                  await tx.inventory.update({
+                    where: { variantId: item.variantId },
+                    data: {
+                      quantityAvailable: { decrement: item.quantity },
+                      quantityReserved: { increment: item.quantity },
+                    },
+                  });
+
+                  await tx.inventoryMovement.create({
+                    data: {
+                      inventoryId: inventory.id,
+                      type: "ORDER_RESERVED",
+                      quantityChange: -item.quantity,
+                      balanceAfter: inventory.quantityAvailable - item.quantity,
+                      referenceId: fullOrder.id,
+                      reason: `Order ${fullOrder.orderNumber} placed`,
+                    },
+                  });
+                }
+              } catch (invErr) {
+                logger.warn(`Could not update inventory for variant ${item.variantId}`, { invErr });
+              }
+            }
+          }
+
+          const payment = fullOrder.payments[0];
+          const result = this.mapPrismaOrderToDTO(fullOrder, payment?.razorpayOrderId || data.razorpayOrderId);
+          inMemoryOrders.set(result.id, result);
+          return result;
+        },
+        {
+          maxWait: 15000,
+          timeout: 30000,
         }
-
-        // 3. Create Payment Record
-        const payment = await tx.payment.create({
-          data: {
-            orderId: order.id,
-            attemptNumber: 1,
-            amount: data.totalAmount,
-            currency: "INR",
-            method: data.paymentMethod,
-            status: data.paymentStatus,
-            razorpayOrderId: data.razorpayOrderId || null,
-          },
-        });
-
-        // Fetch created order with items
-        const fullOrder = await tx.order.findUnique({
-          where: { id: order.id },
-          include: {
-            items: true,
-            payments: true,
-          },
-        });
-
-        if (!fullOrder) throw new Error("Failed to retrieve created order from database");
-
-        const result = this.mapPrismaOrderToDTO(fullOrder, payment.razorpayOrderId);
-        inMemoryOrders.set(result.id, result);
-        return result;
-      });
+      );
     } catch (error) {
       logger.error("Database transaction failed during order creation. Reverting to memory fallback.", error);
       return this.createOrderInMemory(data);
@@ -409,6 +433,9 @@ export class OrderRepository {
       updatedAt: new Date().toISOString(),
       razorpayOrderId: data.razorpayOrderId || null,
       razorpayKeyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_placeholderKeyId",
+      upiQrDataUrl: data.upiQrDataUrl || null,
+      upiUri: data.upiUri || null,
+      intentLinks: data.intentLinks || null,
     };
 
     inMemoryOrders.set(orderId, orderDTO);
@@ -453,6 +480,7 @@ export class OrderRepository {
     }
 
     const latestPayment = order.payments?.[0];
+    const gwResponse = (latestPayment as any)?.gatewayResponse as Record<string, any> | null;
 
     const items: OrderItemDTO[] = (order.items || []).map((i) => ({
       id: i.id,
@@ -503,6 +531,10 @@ export class OrderRepository {
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
       razorpayOrderId: razorpayOrderId || latestPayment?.razorpayOrderId || null,
       razorpayKeyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_placeholderKeyId",
+      upiQrDataUrl: gwResponse?.upiQrDataUrl || null,
+      upiUri: gwResponse?.upiUri || null,
+      intentLinks: gwResponse?.intentLinks || null,
+      redirectUrl: gwResponse?.redirectUrl || null,
     };
   }
 

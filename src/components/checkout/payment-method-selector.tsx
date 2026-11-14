@@ -2,7 +2,7 @@
 
 import React from "react";
 import { PaymentMethodType } from "@/types/checkout";
-import { CreditCard, Banknote, ShieldCheck, Zap, Lock } from "lucide-react";
+import { CreditCard, Banknote, ShieldCheck, Zap, Lock, QrCode, Smartphone } from "lucide-react";
 
 interface PaymentMethodSelectorProps {
   selectedMethod: PaymentMethodType;
@@ -28,6 +28,55 @@ export function PaymentMethodSelector({
       </div>
 
       <div className="space-y-3">
+        {/* UPI & Dynamic QR Option (AkshPay / PhonePe / Paytm) */}
+        <div
+          onClick={() => onSelect("UPI")}
+          className={`p-4 rounded-xl border cursor-pointer transition-all ${
+            selectedMethod === "UPI"
+              ? "border-muted-gold bg-champagne-light/30 ring-2 ring-muted-gold/20 shadow-subtle"
+              : "border-champagne/60 hover:border-muted-gold/50 bg-white"
+          }`}
+        >
+          <div className="flex items-start justify-between">
+            <div className="flex items-start gap-3">
+              <input
+                type="radio"
+                name="paymentMethod"
+                value="UPI"
+                checked={selectedMethod === "UPI"}
+                onChange={() => onSelect("UPI")}
+                className="mt-1 w-4 h-4 text-muted-gold focus:ring-muted-gold border-champagne cursor-pointer"
+              />
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-muted-gold">
+                    <QrCode className="w-4 h-4" />
+                    <Smartphone className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-semibold text-charcoal">
+                    UPI & Dynamic QR (PhonePe, Google Pay, Paytm)
+                  </span>
+                  <span className="text-[10px] font-bold text-white bg-charcoal px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Zap className="w-2.5 h-2.5 text-muted-gold" />
+                    Recommended • 0% Fee
+                  </span>
+                </div>
+                <p className="text-[11px] text-dark-brown/70 mt-1">
+                  Pay directly with PhonePe, Google Pay, Paytm or scan dynamic NPCI QR code
+                </p>
+                <div className="flex items-center gap-3 mt-2 text-[10px] text-emerald-700 font-medium">
+                  <span className="flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Instant Bank Settlement
+                  </span>
+                  <span>•</span>
+                  <span>Real-time Verification</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Razorpay Option */}
         <div
           onClick={() => onSelect("RAZORPAY")}
@@ -45,21 +94,17 @@ export function PaymentMethodSelector({
                 value="RAZORPAY"
                 checked={selectedMethod === "RAZORPAY"}
                 onChange={() => onSelect("RAZORPAY")}
-                className="mt-1 w-4 h-4 text-muted-gold focus:ring-muted-gold border-champagne"
+                className="mt-1 w-4 h-4 text-muted-gold focus:ring-muted-gold border-champagne cursor-pointer"
               />
               <div>
                 <div className="flex items-center gap-2">
                   <CreditCard className="w-4 h-4 text-muted-gold" />
                   <span className="text-xs font-semibold text-charcoal">
-                    Online Payment (Razorpay Secure)
-                  </span>
-                  <span className="text-[10px] font-bold text-white bg-charcoal px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <Zap className="w-2.5 h-2.5 text-muted-gold" />
-                    Recommended
+                    Cards, NetBanking & Wallets (Razorpay)
                   </span>
                 </div>
                 <p className="text-[11px] text-dark-brown/70 mt-1">
-                  UPI (Google Pay, PhonePe, Paytm), RuPay, Visa, Mastercard, NetBanking & Wallets
+                  Credit/Debit Cards (Visa, MasterCard, RuPay), NetBanking & Digital Wallets
                 </p>
                 <div className="flex items-center gap-3 mt-2 text-[10px] text-emerald-700 font-medium">
                   <span className="flex items-center gap-1">
@@ -94,7 +139,7 @@ export function PaymentMethodSelector({
                 checked={selectedMethod === "COD"}
                 disabled={!isCodAvailable}
                 onChange={() => isCodAvailable && onSelect("COD")}
-                className="mt-1 w-4 h-4 text-muted-gold focus:ring-muted-gold border-champagne"
+                className="mt-1 w-4 h-4 text-muted-gold focus:ring-muted-gold border-champagne cursor-pointer"
               />
               <div>
                 <div className="flex items-center gap-2">
@@ -102,8 +147,8 @@ export function PaymentMethodSelector({
                   <span className="text-xs font-semibold text-charcoal">
                     Cash on Delivery (COD)
                   </span>
-                  <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.2 rounded border border-emerald-200">
-                    Free
+                  <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    Available
                   </span>
                 </div>
                 <p className="text-[11px] text-dark-brown/70 mt-1">
@@ -122,4 +167,3 @@ export function PaymentMethodSelector({
     </div>
   );
 }
-
