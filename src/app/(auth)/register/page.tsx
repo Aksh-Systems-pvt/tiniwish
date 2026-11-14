@@ -3,7 +3,6 @@
 import { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +11,7 @@ function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") || "/account";
+  const urlError = searchParams.get("error");
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -23,7 +23,19 @@ function RegisterForm() {
 
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(
+    urlError === "google_oauth_not_configured"
+      ? "Google Sign-In is not configured yet. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env."
+      : urlError === "invalid_oauth_state"
+      ? "Security verification failed for Google Sign-In. Please try again."
+      : urlError === "email_not_verified"
+      ? "Your Google account email is not verified. Please verify it with Google."
+      : urlError === "google_auth_failed"
+      ? "Google authentication could not be completed. Please try again."
+      : urlError
+      ? `Authentication notice: ${urlError}`
+      : null
+  );
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,28 +91,10 @@ function RegisterForm() {
     }
   };
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleLogin = () => {
     setErrorMessage(null);
     setOauthLoading(true);
-
-    try {
-      const supabase = createClient();
-      const origin = window.location.origin;
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${origin}/api/auth/callback?next=${encodeURIComponent(redirectTo)}`,
-        },
-      });
-
-      if (error) {
-        setErrorMessage(error.message || "Failed to initiate Google sign in.");
-        setOauthLoading(false);
-      }
-    } catch {
-      setErrorMessage("Could not connect to Google authentication.");
-      setOauthLoading(false);
-    }
+    window.location.href = `/api/auth/google?next=${encodeURIComponent(redirectTo)}`;
   };
 
   return (

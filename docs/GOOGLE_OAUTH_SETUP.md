@@ -1,103 +1,87 @@
-# Google OAuth 2.0 Configuration Guide for TiniWish
+# Google OAuth 2.0 Direct Authentication Guide for TiniWish
 
-This document provides complete instructions for configuring Google OAuth 2.0 authentication for the TiniWish luxury e-commerce platform using Supabase Auth.
+This document provides complete instructions for configuring direct Google OAuth 2.0 authentication for TiniWish.
+
+The authentication flow connects **directly to Google** (`accounts.google.com`) without routing user browser traffic through Supabase URL redirects, while maintaining complete session and database synchronization.
 
 ---
 
-## Architecture & Authentication Flow
+## Direct Authentication Architecture
 
 ```
-1. Customer clicks "Continue with Google" in TiniWish Storefront (/login or /register)
+1. Customer clicks "Continue with Google" (/login or /register)
    ↓
-2. Supabase Browser Client invokes `supabase.auth.signInWithOAuth({ provider: 'google' })`
+2. Browser navigates to TiniWish direct route:
+   `/api/auth/google?next=/account`
+   - Generates cryptographically secure CSRF state token
+   - Sets secure httpOnly cookie `google_oauth_state`
    ↓
-3. Customer is redirected to Google OAuth Consent Screen
+3. TiniWish redirects browser directly to Google:
+   `https://accounts.google.com/o/oauth2/v2/auth?...`
+   (Supabase is NOT in the browser redirect chain)
    ↓
-4. Customer approves profile & email permissions
+4. Customer signs in and approves profile/email permissions on Google
    ↓
-5. Google redirects to Supabase Auth Callback URL:
-   `https://twdyzsnrroiwjiqiilqs.supabase.co/auth/v1/callback`
+5. Google redirects browser directly back to TiniWish:
+   `http://localhost:3000/api/auth/google/callback?code=...&state=...`
    ↓
-6. Supabase processes authorization code and redirects to TiniWish Callback Handler:
-   `/api/auth/callback?code=<session_code>&next=/account`
+6. `/api/auth/google/callback` route handler:
+   a. Validates CSRF state against the httpOnly cookie
+   b. Exchanges authorization code directly with Google `https://oauth2.googleapis.com/token`
+   c. Fetches verified user info from Google `https://www.googleapis.com/oauth2/v3/userinfo`
+   d. Provisions session cookies via server-side OTP bridge
+   e. Synchronizes customer in Prisma database with `Role.CUSTOMER`
    ↓
-7. `/api/auth/callback` executes:
-   a. `supabase.auth.exchangeCodeForSession(code)`
-   b. `authService.syncOAuthUser(supabaseUser)` (persists user in Prisma DB with Role.CUSTOMER)
-   c. Enforces account status check (ensures isActive is true and deletedAt is null)
-   ↓
-8. Customer is redirected to `/account` with active HTTP-only session cookies
+7. Customer is redirected to their destination (`/account` or `/checkout`) logged in!
 ```
 
 ---
 
 ## Step 1: Google Cloud Console Setup
 
-1. Open [Google Cloud Console](https://console.cloud.google.com/).
-2. Select or create a project: **`TiniWish E-Commerce`**.
-3. Navigate to **APIs & Services** > **OAuth consent screen**.
+1. Open the [Google Cloud Console Credentials Page](https://console.cloud.google.com/apis/credentials).
+2. Select or create your project: **`TiniWish E-Commerce`**.
+3. Configure the **OAuth consent screen** under **APIs & Services** > **OAuth consent screen**:
    - User Type: **External**
    - App Name: `TiniWish`
    - User support email: `care@tiniwish.com`
-   - App logo: Luxury TiniWish Logo
-   - Authorized domains:
-     - `supabase.co`
-     - `tiniwish.com`
-   - Developer contact email: `tech@tiniwish.com`
-   - Scopes: Select `.../auth/userinfo.email`, `.../auth/userinfo.profile`, `openid`.
-4. Navigate to **APIs & Services** > **Credentials**.
-5. Click **+ Create Credentials** > **OAuth client ID**.
+   - Scopes: `.../auth/userinfo.email`, `.../auth/userinfo.profile`, `openid`
+4. Under **APIs & Services** > **Credentials**, click **+ CREATE CREDENTIALS** > **OAuth client ID**:
    - Application type: **Web application**
    - Name: `TiniWish Web Client`
    - **Authorized JavaScript origins**:
      - `http://localhost:3000`
-     - `https://tiniwish.com`
-     - `https://twdyzsnrroiwjiqiilqs.supabase.co`
+     - `https://tiniwish.com` (for production)
    - **Authorized redirect URIs**:
-     - `https://twdyzsnrroiwjiqiilqs.supabase.co/auth/v1/callback`
-6. Click **Create** and securely copy the **Client ID** and **Client Secret**.
+     - `http://localhost:3000/api/auth/google/callback`
+     - `https://tiniwish.com/api/auth/google/callback` (for production)
+5. Click **Create** and copy your **Client ID** and **Client Secret**.
 
 ---
 
-## Step 2: Supabase Dashboard Configuration
+## Step 2: Configure Environment Variables
 
-1. Log in to [Supabase Dashboard](https://supabase.com/dashboard/project/twdyzsnrroiwjiqiilqs).
-2. Navigate to **Authentication** > **Providers** > **Google**.
-3. Toggle **Google enabled** to **ON**.
-4. Paste the credentials obtained from Step 1:
-   - **Client ID**: `<YOUR_GOOGLE_CLIENT_ID>.apps.googleusercontent.com`
-   - **Client Secret**: `<YOUR_GOOGLE_CLIENT_SECRET>`
-5. Click **Save**.
-6. Navigate to **Authentication** > **URL Configuration**:
-   - **Site URL**: `http://localhost:3000` (for local dev) or `https://tiniwish.com` (production)
-   - **Redirect URLs** (Add all of the following):
-     - `http://localhost:3000/**`
-     - `http://localhost:3000/api/auth/callback`
-     - `https://tiniwish.com/**`
-     - `https://tiniwish.com/api/auth/callback`
+Add the credentials to your `.env` (or `.env.local`) file:
+
+```env
+# Google OAuth 2.0 (Direct Authentication)
+GOOGLE_CLIENT_ID="<your_client_id>.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET="<your_client_secret>"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+```
 
 ---
 
-## Step 3: Environment Variables Checklist
+## Step 3: Security Protections Built-In
 
-Ensure the following variables are present in your production environment:
-
-| Variable | Description | Example |
-| :--- | :--- | :--- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase Project URL | `https://twdyzsnrroiwjiqiilqs.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public Anon Key for SSR Client | `sb_publishable_...` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Secret Key for Server-Side Role Administration | `sb_secret_...` |
-| `NEXT_PUBLIC_APP_URL` | Canonical Base URL of TiniWish Application | `http://localhost:3000` or `https://tiniwish.com` |
-
----
-
-## Step 4: Verification & Security Protections
-
-1. **Privilege Escalation Prevention**:
-   - Every user registered via Google OAuth is created with `Role.CUSTOMER` in the database.
-   - Client applications cannot supply or manipulate the role parameter.
-2. **Account Status Enforcement**:
-   - If a deactivated or soft-deleted user attempts to log in via Google OAuth, `syncOAuthUser` rejects the session with HTTP 403 Forbidden.
-3. **HTTP-Only Cookies**:
-   - `@supabase/ssr` stores tokens in secure, partitioned HTTP cookies inaccessible to client scripts, protecting against XSS attacks.
-
+1. **CSRF Protection**:
+   - Every login initiation generates a 32-byte cryptographically random token (`crypto.randomBytes(32)`).
+   - Stored in a strict, httpOnly cookie (`google_oauth_state`) with a 10-minute expiry and validated upon callback.
+2. **Email Verification Requirement**:
+   - Only Google accounts with `email_verified: true` are permitted to authenticate.
+3. **Privilege Escalation Prevention**:
+   - All OAuth registrations are strictly enforced as `Role.CUSTOMER`.
+4. **Deactivated Account Enforcement**:
+   - Inactive or soft-deleted customer profiles are barred with HTTP 403 Forbidden.
+5. **No Supabase Auth Dashboard Dependency**:
+   - Does not require enabling third-party provider toggles in Supabase dashboard because authentication verification is managed directly through server-side authorization.
