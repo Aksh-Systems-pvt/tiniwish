@@ -105,7 +105,11 @@ function SuccessContent() {
                 </div>
                 <p className="text-dark-brown/70">
                   <strong className="text-charcoal">Payment Mode: </strong>
-                  {order.paymentMethod === "COD" ? "Cash on Delivery" : "Razorpay Online Payment"}
+                  {order.paymentMethod === "COD"
+                    ? "Cash on Delivery"
+                    : order.paymentMethod === "UPI"
+                    ? "UPI Instant Payment (PhonePe)"
+                    : "Razorpay Online Payment"}
                 </p>
                 <p className="text-dark-brown/70">
                   <strong className="text-charcoal">Status: </strong>

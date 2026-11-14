@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { AddressForm } from "@/components/checkout/address-form";
 
 interface Address {
   id: string;
@@ -26,18 +27,27 @@ interface Address {
   phone: string;
   addressLine1: string;
   addressLine2?: string | null;
+  landmark?: string | null;
   city: string;
   state: string;
   pincode: string;
+  addressType?: string;
   isDefaultShipping: boolean;
   isDefaultBilling: boolean;
 }
 
 interface OrderItem {
   id: string;
-  title: string;
-  price: number | string;
+  productTitle?: string;
+  variantTitle?: string;
+  title?: string;
+  sku?: string;
+  sellingPrice?: number | string;
+  unitPrice?: number | string;
+  price?: number | string;
+  totalPrice?: number | string;
   quantity: number;
+  imageUrlSnapshot?: string | null;
 }
 
 interface Order {
@@ -83,6 +93,7 @@ function AccountDashboard() {
   const [phone, setPhone] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [isAddingAddress, setIsAddingAddress] = useState(false);
 
   useEffect(() => {
     async function loadProfile() {
@@ -157,6 +168,30 @@ function AccountDashboard() {
       setProfileMessage({ text: "Network error occurred.", type: "error" });
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const handleCreateAddress = async (addrData: any) => {
+    try {
+      const res = await fetch("/api/v1/user/addresses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(addrData),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.data) {
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                addresses: [data.data, ...prev.addresses],
+              }
+            : null
+        );
+        setIsAddingAddress(false);
+      }
+    } catch {
+      // Ignored
     }
   };
 
@@ -505,7 +540,7 @@ function AccountDashboard() {
       {/* Tab 2: Orders List */}
       {activeTab === "orders" && (
         <div className="bg-white rounded-2xl border border-stone-200/80 p-6 shadow-sm">
-          <h2 className="font-serif text-xl text-stone-900 mb-4">Order History</h2>
+          <h2 className="font-serif text-xl text-stone-900 mb-6">Order History</h2>
           {profile.orders.length === 0 ? (
             <div className="text-center py-16 text-stone-400">
               <Package className="w-10 h-10 mx-auto mb-3 opacity-40 text-stone-600" />
@@ -519,25 +554,106 @@ function AccountDashboard() {
               </Link>
             </div>
           ) : (
-            <div className="divide-y divide-stone-100">
+            <div className="space-y-6">
               {profile.orders.map((order) => (
-                <div key={order.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-medium text-stone-900 text-sm">Order #{order.orderNumber}</span>
-                      <Badge variant="outline" className="text-[10px] uppercase font-normal">
-                        {order.status}
-                      </Badge>
+                <div
+                  key={order.id}
+                  className="rounded-2xl border border-stone-200/90 bg-stone-50/20 overflow-hidden shadow-xs hover:border-stone-300 transition-all"
+                >
+                  {/* Order Card Header */}
+                  <div className="p-4 sm:p-5 bg-white border-b border-stone-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="font-serif font-medium text-stone-900 text-sm sm:text-base">
+                          Order #{order.orderNumber}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] uppercase font-semibold px-2 py-0.5 rounded-md ${
+                            order.status === "DELIVERED"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : order.status === "CANCELLED"
+                              ? "bg-red-50 text-red-700 border-red-200"
+                              : order.status === "PROCESSING" || order.status === "CONFIRMED"
+                              ? "bg-amber-50 text-amber-800 border-amber-200"
+                              : "bg-stone-50 text-stone-700 border-stone-200"
+                          }`}
+                        >
+                          {order.status.replace(/_/g, " ")}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-stone-400 mt-1">
+                        Placed on {new Date(order.createdAt).toLocaleDateString("en-IN", { dateStyle: "long" })}
+                      </p>
                     </div>
-                    <p className="text-xs text-stone-400 mt-1">
-                      Placed on {new Date(order.createdAt).toLocaleDateString("en-IN", { dateStyle: "long" })}
-                    </p>
+
+                    <div className="text-left sm:text-right">
+                      <span className="text-xs text-stone-400 block sm:inline mr-2">Total:</span>
+                      <span className="text-sm sm:text-base font-serif font-semibold text-stone-900">
+                        ₹{Number(order.totalAmount).toLocaleString("en-IN")}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-right sm:text-right">
-                    <span className="text-sm font-medium text-stone-900 block">
-                      ₹{Number(order.totalAmount).toLocaleString("en-IN")}
-                    </span>
-                    <span className="text-xs text-stone-400">{order.items.length} item(s)</span>
+
+                  {/* Order Items List */}
+                  <div className="p-4 sm:p-5 divide-y divide-stone-100 bg-white/70">
+                    {order.items && order.items.length > 0 ? (
+                      order.items.map((item) => {
+                        const itemTitle = item.productTitle || item.title || "Handcrafted Item";
+                        const itemPrice = Number(item.sellingPrice || item.price || 0);
+                        const itemTotal = Number(item.totalPrice || itemPrice * item.quantity);
+
+                        return (
+                          <div key={item.id} className="py-3.5 first:pt-0 last:pb-0 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3.5 min-w-0">
+                              <div className="w-14 h-14 rounded-xl bg-stone-100 border border-stone-200/80 overflow-hidden shrink-0 flex items-center justify-center relative">
+                                {item.imageUrlSnapshot ? (
+                                  <img
+                                    src={item.imageUrlSnapshot}
+                                    alt={itemTitle}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <Package className="w-6 h-6 text-stone-400 opacity-60" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="text-xs sm:text-sm font-medium text-stone-900 truncate">
+                                  {itemTitle}
+                                </h4>
+                                {item.variantTitle && item.variantTitle !== "Default" && (
+                                  <p className="text-[11px] text-stone-500 mt-0.5">
+                                    Variant: {item.variantTitle}
+                                  </p>
+                                )}
+                                <p className="text-[11px] text-stone-400 mt-0.5">
+                                  Qty: {item.quantity} × ₹{itemPrice.toLocaleString("en-IN")}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="text-right shrink-0">
+                              <span className="text-xs sm:text-sm font-medium text-stone-900 block">
+                                ₹{itemTotal.toLocaleString("en-IN")}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-xs text-stone-400 py-2">Details not available for items in this order.</p>
+                    )}
+                  </div>
+
+                  {/* Order Card Footer */}
+                  <div className="px-4 py-3 bg-stone-50/70 border-t border-stone-100 flex items-center justify-between text-xs text-stone-500">
+                    <span>{order.items?.length || 0} item(s)</span>
+                    <Link
+                      href={`/checkout/success?orderNumber=${order.orderNumber}`}
+                      className="font-medium text-amber-800 hover:text-amber-900 hover:underline flex items-center gap-1"
+                    >
+                      View Order Receipt <ArrowRight className="w-3 h-3" />
+                    </Link>
                   </div>
                 </div>
               ))}
@@ -551,12 +667,28 @@ function AccountDashboard() {
         <div className="bg-white rounded-2xl border border-stone-200/80 p-6 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <h2 className="font-serif text-xl text-stone-900">Saved Addresses</h2>
-            <Button variant="outline" className="text-xs h-8 border-stone-200">
-              <MapPin className="w-3.5 h-3.5 mr-1" /> Add New Address
-            </Button>
+            {!isAddingAddress && (
+              <Button
+                variant="outline"
+                onClick={() => setIsAddingAddress(true)}
+                className="text-xs h-8 border-stone-200 cursor-pointer"
+              >
+                <MapPin className="w-3.5 h-3.5 mr-1" /> Add New Address
+              </Button>
+            )}
           </div>
 
-          {profile.addresses.length === 0 ? (
+          {isAddingAddress ? (
+            <div className="p-4 sm:p-6 rounded-2xl border border-stone-200 bg-stone-50/40">
+              <h3 className="font-serif text-base text-stone-900 mb-4">Add Delivery Location</h3>
+              <AddressForm
+                isLoggedIn={true}
+                onSubmit={handleCreateAddress}
+                onCancel={() => setIsAddingAddress(false)}
+                submitButtonText="Save Address"
+              />
+            </div>
+          ) : profile.addresses.length === 0 ? (
             <div className="text-center py-16 text-stone-400">
               <MapPin className="w-10 h-10 mx-auto mb-3 opacity-40 text-stone-600" />
               <p className="text-sm font-medium text-stone-600 mb-1">No Addresses Saved</p>

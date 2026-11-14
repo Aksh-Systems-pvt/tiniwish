@@ -1,7 +1,7 @@
 import { AppliedCouponDTO } from "./cart";
 
 export type AddressType = "HOME" | "WORK" | "OTHER";
-export type PaymentMethodType = "RAZORPAY" | "COD";
+export type PaymentMethodType = "RAZORPAY" | "COD" | "UPI";
 export type OrderStatusType =
   | "PENDING_PAYMENT"
   | "PAYMENT_FAILED"
@@ -131,11 +131,24 @@ export interface OrderDTO {
   updatedAt: string;
   razorpayOrderId?: string | null;
   razorpayKeyId?: string | null;
+  redirectUrl?: string | null;
+  upiQrDataUrl?: string | null;
+  upiUri?: string | null;
+  intentLinks?: {
+    generic?: string;
+    phonepe?: string;
+    gpay?: string;
+    paytm?: string;
+    bhim?: string;
+  } | null;
 }
 
 export interface VerifyPaymentRequestDTO {
-  razorpayPaymentId: string;
-  razorpayOrderId: string;
-  razorpaySignature: string;
+  paymentMethod?: PaymentMethodType;
+  razorpayPaymentId?: string;
+  razorpayOrderId?: string;
+  razorpaySignature?: string;
+  transactionId?: string;
+  upiReferenceId?: string;
 }
 

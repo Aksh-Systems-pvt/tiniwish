@@ -19,7 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "akshpay": ["./packages/akshpay/src/index.ts"],
+      "akshpay/*": ["./packages/akshpay/src/*"]
     }
   },
   "include": [

@@ -54,24 +54,17 @@ export class UserRepository {
   }
 
   /**
-   * Finds a user by internal ID with associated addresses, recent orders, and counts.
+   * Finds a user by internal ID with associated addresses, complete orders, and counts.
+   * Auto-associates any past orders matched by customer email.
    */
   async findByIdWithDetails(id: string) {
     try {
-      return await prisma.user.findUnique({
+      const user = await prisma.user.findUnique({
         where: { id },
         include: {
           addresses: {
-            orderBy: { isDefaultShipping: "desc" },
-          },
-          orders: {
-            take: 5,
-            orderBy: { createdAt: "desc" },
-            include: {
-              items: {
-                take: 2,
-              },
-            },
+            where: { deletedAt: null },
+            orderBy: [{ isDefaultShipping: "desc" }, { createdAt: "desc" }],
           },
           _count: {
             select: {
@@ -81,6 +74,43 @@ export class UserRepository {
           },
         },
       });
+
+      if (!user) return null;
+
+      // Find all orders for this user by userId OR customerEmail (case-insensitive)
+      const orders = await prisma.order.findMany({
+        where: {
+          OR: [
+            { userId: user.id },
+            { customerEmail: { equals: user.email, mode: "insensitive" } },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+        include: {
+          items: true,
+          payments: true,
+        },
+      });
+
+      // Auto-heal any orders with matching customer email that lacked userId
+      const unlinkedIds = orders.filter((o) => !o.userId).map((o) => o.id);
+      if (unlinkedIds.length > 0) {
+        prisma.order
+          .updateMany({
+            where: { id: { in: unlinkedIds } },
+            data: { userId: user.id },
+          })
+          .catch((err) => logger.warn("Failed to auto-heal order userIds", { err }));
+      }
+
+      return {
+        ...user,
+        orders,
+        _count: {
+          ...user._count,
+          orders: orders.length,
+        },
+      };
     } catch (error) {
       logger.error(`Failed to find user with details: ${id}`, error);
       return null;

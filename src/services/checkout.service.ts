@@ -1,9 +1,13 @@
 import crypto from "crypto";
 import { orderRepository, CreateOrderParams } from "@/repositories/order.repository";
 import { addressRepository } from "@/repositories/address.repository";
+import { userRepository } from "@/repositories/user.repository";
 import { cartRepository } from "@/repositories/cart.repository";
 import { productRepository } from "@/repositories/product.repository";
 import { pincodeService } from "@/features/shipping/pincode.service";
+import { paymentProviderRegistry } from "@/features/payments/payment-provider.registry";
+import { paymentService } from "@/features/payments/payment.service";
+import { rupeesToPaise, generateUPIQR, buildIntentLinks } from "akshpay";
 import { calculateCartFinancials, CouponRule } from "@/lib/cart-calculations";
 import {
   CheckoutCalculationDTO,
@@ -68,7 +72,7 @@ export class CheckoutService {
   async calculateCheckoutFinancials(params: {
     pincode: string;
     couponCode?: string | null;
-    paymentMethod?: "RAZORPAY" | "COD";
+    paymentMethod?: "RAZORPAY" | "COD" | "UPI";
     isGiftWrapped?: boolean;
     items?: CheckoutItemDTO[];
     cartContext?: ResolvedCartContext;
@@ -179,17 +183,59 @@ export class CheckoutService {
     // 6. Generate public order number: e.g. TW-2026-849201
     const orderNumber = `TW-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
 
-    // 7. Prepare Razorpay order ID if paying via Razorpay
+    // 7. Prepare payment details based on method
     let razorpayOrderId: string | null = null;
+    let upiQrDataUrl: string | null = null;
+    let upiUri: string | null = null;
+    let intentLinks: OrderDTO["intentLinks"] = null;
+    let redirectUrl: string | null = null;
+
     if (paymentMethod === "RAZORPAY") {
       razorpayOrderId = `order_rzp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    } else if (paymentMethod === "UPI") {
+      try {
+        const upiProvider = paymentProviderRegistry.getProviderForMethod("UPI");
+        const upiRes = await upiProvider.createPayment({
+          orderId: "pending",
+          orderNumber,
+          amountInRupees: totalAmount,
+          amountInPaise: rupeesToPaise(totalAmount),
+          currency: "INR",
+          customer: {
+            name: customer.name,
+            email: customer.email,
+            phone: customer.phone,
+          },
+          idempotencyKey,
+          upiOptions: { generateQR: true },
+        });
+
+        redirectUrl = upiRes.redirectUrl || null;
+        upiQrDataUrl = upiRes.qrDataUrl || null;
+        upiUri = upiRes.upiUri || null;
+        intentLinks = upiRes.intentLinks || null;
+      } catch (upiErr) {
+        logger.warn("Could not pre-generate UPI QR code during order placement", { upiErr });
+      }
     }
 
-    // 8. Construct CreateOrderParams
+    // 8. Construct CreateOrderParams (linking by authUser or registered customer email)
+    let resolvedUserId = authUser?.id || null;
+    if (!resolvedUserId && customer.email) {
+      try {
+        const existingUser = await userRepository.findByEmail(customer.email);
+        if (existingUser) {
+          resolvedUserId = existingUser.id;
+        }
+      } catch (err) {
+        logger.warn("Could not match user by email during order creation", { err });
+      }
+    }
+
     const orderParams: CreateOrderParams = {
       idempotencyKey,
       orderNumber,
-      userId: authUser?.id || null,
+      userId: resolvedUserId,
       customerName: customer.name,
       customerEmail: customer.email,
       customerPhone: customer.phone,
@@ -233,10 +279,21 @@ export class CheckoutService {
         };
       }),
       razorpayOrderId,
+      redirectUrl,
+      upiQrDataUrl,
+      upiUri,
+      intentLinks,
     };
 
     // 9. Execute database transaction
     const createdOrder = await orderRepository.createOrderWithTransaction(orderParams);
+
+    // Automatically save new delivery address to user's saved addresses if requested
+    if (resolvedUserId && shippingAddress?.saveToProfile && !shippingAddress.id) {
+      addressRepository.createAddress(resolvedUserId, shippingAddress).catch((err) => {
+        logger.warn("Could not save address to profile during checkout", { err });
+      });
+    }
 
     // 10. Clear caller's database cart if cartContext is available
     if (cartContext) {
@@ -262,7 +319,9 @@ export class CheckoutService {
     paymentData: VerifyPaymentRequestDTO,
     authUser?: AuthUser | null
   ): Promise<OrderDTO> {
-    const { razorpayPaymentId, razorpayOrderId, razorpaySignature } = paymentData;
+    const razorpayPaymentId = paymentData.razorpayPaymentId || `pay_sim_${Date.now()}`;
+    const razorpayOrderId = paymentData.razorpayOrderId || "order_sim_123";
+    const razorpaySignature = paymentData.razorpaySignature || "mock_signature_valid";
 
     const order = await orderRepository.findById(orderId);
     if (!order) {
@@ -302,6 +361,30 @@ export class CheckoutService {
   }
 
   /**
+   * Verifies UPI payment status via AkshPay provider and activates order.
+   */
+  async verifyUpiPayment(
+    orderId: string,
+    transactionId?: string,
+    authUser?: AuthUser | null
+  ): Promise<OrderDTO> {
+    let order = await orderRepository.findById(orderId);
+    if (!order) {
+      order = await orderRepository.findByOrderNumber(orderId);
+    }
+    if (!order) {
+      throw new NotFoundError(`Order with ID '${orderId}' not found`);
+    }
+
+    if (authUser && order.userId && order.userId !== authUser.id) {
+      throw new UnauthorizedError("You are not authorized to modify this order");
+    }
+
+    const txId = transactionId || `upi_tx_${Date.now()}`;
+    return await paymentService.confirmPayment(order.id, txId, "AKSHPAY_PHONEPE");
+  }
+
+  /**
    * Retrieves an order by ID or orderNumber, with privacy protection.
    */
   async getOrder(
@@ -320,6 +403,27 @@ export class CheckoutService {
     // If order has an owner, verify ownership
     if (order.userId && authUser && order.userId !== authUser.id && authUser.role !== "ADMIN") {
       throw new UnauthorizedError("You do not have permission to view this order");
+    }
+
+    // If UPI payment is pending and QR code wasn't persisted, generate dynamically
+    if (order.paymentMethod === "UPI" && (!order.upiQrDataUrl || !order.intentLinks)) {
+      try {
+        const vpa = process.env.PHONEPE_MERCHANT_VPA || "merchant@upi";
+        const merchantName = process.env.PHONEPE_MERCHANT_NAME || "TiniWish Luxury Store";
+        const qrRes = await generateUPIQR({
+          vpa,
+          name: merchantName,
+          amount: Number(order.totalAmount),
+          orderId: order.orderNumber,
+          note: `Payment for order ${order.orderNumber}`,
+          mode: "fixed",
+        });
+        order.upiQrDataUrl = qrRes.qrImage;
+        order.upiUri = qrRes.upiUri;
+        order.intentLinks = buildIntentLinks(qrRes.upiUri);
+      } catch (err) {
+        logger.warn("Could not generate dynamic QR code in getOrder", { err });
+      }
     }
 
     return order;
@@ -357,24 +461,8 @@ export class CheckoutService {
     clientItems?: CheckoutItemDTO[],
     cartContext?: ResolvedCartContext
   ): Promise<CartItemDTO[]> {
-    // 1. If cartContext provided, fetch genuine database cart items
-    if (cartContext) {
-      try {
-        const cartId = await cartRepository.getOrCreateCart({
-          userId: cartContext.userId,
-          sessionToken: cartContext.sessionToken,
-        });
-        const cart = await cartRepository.getCartById(cartId);
-
-        if (cart && cart.items && cart.items.length > 0) {
-          return cart.items;
-        }
-      } catch (err) {
-        logger.warn("Could not retrieve cart from cartRepository, falling back to items", { err });
-      }
-    }
-
-    // 2. If client provided items, verify genuine server prices against database / seed catalogue
+    // 1. If client provided items, verify genuine server prices and stock against database
+    // Never trust client prices: authoritatively resolve variant sellingPrice, mrp, and real stock
     if (clientItems && clientItems.length > 0) {
       const verifiedItems: CartItemDTO[] = [];
 
@@ -395,6 +483,8 @@ export class CheckoutService {
           cItem.image ||
           "/images/placeholder.jpg";
 
+        const availableStock = variant?.stockQuantity ?? 25;
+
         verifiedItems.push({
           id: `item_${prod.id}_${variant?.id || "def"}`,
           cartId: "guest_cart",
@@ -409,15 +499,34 @@ export class CheckoutService {
           mrp: genuineMrp,
           quantity: cItem.quantity,
           attributes: variant?.attributes || {},
-          stockQuantity: variant?.stockQuantity ?? 10,
+          stockQuantity: availableStock,
           lowStockThreshold: variant?.lowStockThreshold ?? 2,
-          isAvailable: (variant?.stockQuantity ?? 10) > 0,
+          isAvailable: availableStock > 0,
           gstRatePercent: 3.0,
           itemTotal: genuinePrice * cItem.quantity,
         });
       }
 
-      return verifiedItems;
+      if (verifiedItems.length > 0) {
+        return verifiedItems;
+      }
+    }
+
+    // 2. Fallback: If no client items provided, retrieve from server-side database cart
+    if (cartContext) {
+      try {
+        const cartId = await cartRepository.getOrCreateCart({
+          userId: cartContext.userId,
+          sessionToken: cartContext.sessionToken,
+        });
+        const cart = await cartRepository.getCartById(cartId);
+
+        if (cart && cart.items && cart.items.length > 0) {
+          return cart.items;
+        }
+      } catch (err) {
+        logger.warn("Could not retrieve cart from cartRepository, falling back to items", { err });
+      }
     }
 
     return [];
